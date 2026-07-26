@@ -699,6 +699,7 @@ footer{background:var(--void);position:relative;z-index:4;border-top:1px solid v
 
 <div id="app"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════
    ÍRIS — ÓPTICA DE AUTOR · app
@@ -711,6 +712,20 @@ const CONFIG = {
   freteGratis:350,
 };
 const BRL = v => "R$ " + v.toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".");
+
+/* ─────────── SUPABASE ───────────
+   Catálogo (leitura) e pedidos (gravação) ficam no banco; o site
+   nasce com o catálogo local abaixo como fallback e tenta sincronizar
+   com o banco assim que a página carrega. Se o banco não responder
+   (offline, chave trocada, etc.) o site continua funcionando normal
+   com os dados locais — só não fica atualizado em tempo real.
+   Rode supabase/migrations/0001_init_catalogo_pedidos.sql no projeto
+   antes de esperar dados vindo de lá. */
+const SUPA_URL = "https://jrdqjjdsajruszflzwpb.supabase.co";
+const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyZHFqamRzYWpydXN6Zmx6d3BiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwODA2ODYsImV4cCI6MjEwMDY1NjY4Nn0.DHGTP9HU9asMBBbQSyhLhe3xKVRRMO85IjDYkWe2Tyg";
+const sb = (typeof supabase!=="undefined")
+  ? supabase.createClient(SUPA_URL,SUPA_ANON_KEY)
+  : null;
 
 /* ─────────── GEOMETRIA DAS ARMAÇÕES (base em px, k = escala) ─────────── */
 const SHAPES = {
@@ -816,6 +831,27 @@ const PRODUTOS = [
    mm:"53▫18▫146",mat:"Metal flat",
    desc:"Hexagonal com haste chata e dobradiça flex. Ângulo marcado que foge do formato óbvio."},
 ];
+
+/* Sincroniza o catálogo com a tabela `armacoes` do Supabase, se disponível.
+   PRODUTOS continua com os dados locais acima até (e a menos que) o banco
+   responda — o array é mutado no próprio lugar (não reatribuído) pra que
+   todo o código que já referencia PRODUTOS enxergue a atualização. */
+async function syncCatalogoRemoto(){
+  if(!sb)return;
+  try{
+    const {data,error} = await sb.from("armacoes").select("*").eq("ativo",true).order("ordem",{ascending:true});
+    if(error||!data||!data.length)return;
+    PRODUTOS.length=0;
+    data.forEach(r=>PRODUTOS.push({
+      id:r.id,nome:r.nome,casa:r.casa,shape:r.shape,cat:r.cat,
+      preco:+r.preco,old:+r.preco_antigo||0,rating:+r.rating||0,
+      cores:r.cores||[],tag:r.tag||"",mm:r.mm||"",mat:r.mat||"",desc:r.descricao||"",
+    }));
+    renderFilters(); renderGrid();
+    refreshV360Data();
+    if(T.prod){ T.prod=PRODUTOS.find(p=>p.id===T.prod.id)||PRODUTOS[0]; drawChips(); if(T.mode==="photo")repaint(); }
+  }catch(e){ /* mantém o catálogo local — o site segue funcionando normal */ }
+}
 
 /* ─────────── LENTES ─────────── */
 const LENTES = [
@@ -1118,8 +1154,13 @@ function lenteTexto(id){
 
 /* ═══════════ VISUALIZADOR 360° ═══════════ */
 const V={prod:PRODUTOS.find(p=>p.id==='ir03'),cor:'#B8935A',ry:0,auto:true,raf:null,drag:false,lastX:0};
-function init360(){
+function refreshV360Data(){
+  V.prod = PRODUTOS.find(p=>p.id===V.prod.id) || PRODUTOS[0];
+  V.cor = V.prod.cores.includes(V.cor) ? V.cor : V.prod.cores[0];
   paint360(); renderV360Cores(); renderV360Tools();
+}
+function init360(){
+  refreshV360Data();
   const stage=document.getElementById("v360Stage");
   const down=e=>{V.drag=true;V.auto=false;stage.classList.add("dragging","touched");V.lastX=(e.touches?e.touches[0]:e).clientX;syncAuto();};
   const move=e=>{
@@ -1316,10 +1357,19 @@ function checkout(){
   if(!cart.length)return;
   let m=`*${CONFIG.loja}* — novo pedido\n\n`;
   cart.forEach(i=>{m+=`▫ ${i.qty}x ${i.nome} (${i.corN})\n   Lente: ${i.lente}\n   ${i.grau}\n   ${BRL(i.preco*i.qty)}\n\n`;});
-  const t=totalCart();
+  const t=totalCart(), frete=t>=CONFIG.freteGratis;
   m+=`*Total:* ${BRL(t)}\n*Parcelamento:* ${CONFIG.parcelas}x de ${BRL(t/CONFIG.parcelas)} sem juros\n`;
-  m+=`*Frete:* ${t>=CONFIG.freteGratis?"grátis":"a combinar"}\n\n_Aguardo confirmação e dados de entrega._`;
+  m+=`*Frete:* ${frete?"grátis":"a combinar"}\n\n_Aguardo confirmação e dados de entrega._`;
+  registrarPedido(t,frete);
   window.open(`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(m)}`,"_blank");
+}
+/* Grava o pedido no Supabase antes de abrir o WhatsApp — só pra ficar
+   registrado no banco também. Não bloqueia o checkout: se o banco não
+   responder, o WhatsApp abre normalmente do mesmo jeito. */
+function registrarPedido(total,frete){
+  if(!sb)return;
+  sb.from("pedidos").insert({itens:cart,total,frete_gratis:frete,canal:"whatsapp"})
+    .then(({error})=>{ if(error) console.warn("Não foi possível registrar o pedido no Supabase:",error.message); });
 }
 
 /* ═══════════ PROVADOR VIRTUAL ═══════════
@@ -1681,6 +1731,7 @@ loadFM();
 observeReveal();
 navScroll();
 perfGuards();
+syncCatalogoRemoto();
 addEventListener("load",()=>{
   setTimeout(()=>{document.getElementById("loader").classList.add("done");counters();},650);
 });
