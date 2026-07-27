@@ -627,52 +627,54 @@ const sb = (typeof supabase!=="undefined")
 /* ─────────── CATÁLOGO ───────────
    PREÇOS SÃO PLACEHOLDER — troque pelos valores reais antes de publicar.
    Cada produto tem fotos reais em produtos/<id>/1.png .. <n>.png
-   (capturadas de vários ângulos). "shape"/"cor" abaixo servem só de
-   entrada pro provador virtual (silhueta que acompanha o rosto na foto),
-   não são usados pra exibir o produto — pra isso usamos as fotos reais. */
+   (vários ângulos, usadas na vitrine) e produtos/<id>/frente.png
+   (recorte frontal sem fundo, usado pelo provador virtual). */
 const PRODUTOS = [
-  {id:"rayban-bill",nome:"Bill",marca:"Ray-Ban",shape:"aviador",cor:"#8a5a3c",mat:"Acetato",preco:899,n:7,capa:2,tag:"Mais vendido",
+  {id:"rayban-bill",nome:"Bill",marca:"Ray-Ban",mat:"Acetato",preco:899,n:7,capa:2,tag:"Mais vendido",
    desc:"Aviador dos anos 60 revisitado em acetato tartaruga. Um ícone que nunca saiu de moda."},
-  {id:"burberry-be4403",nome:"BE4403",marca:"Burberry",shape:"quadrada",cor:"#0d0d0d",mat:"Acetato",preco:1190,n:5,capa:2,tag:"Premium",
+  {id:"burberry-be4403",nome:"BE4403",marca:"Burberry",mat:"Acetato",preco:1190,n:5,capa:2,tag:"Premium",
    desc:"Quadrada em acetato preto brilhante com o check Burberry na haste. Peso e presença de grife."},
-  {id:"burberry-be4436u",nome:"BE4436U",marca:"Burberry",shape:"gatinho",cor:"#0d0d0d",mat:"Acetato",preco:1230,n:5,capa:2,tag:"",
+  {id:"burberry-be4436u",nome:"BE4436U",marca:"Burberry",mat:"Acetato",preco:1230,n:5,capa:2,tag:"",
    desc:"Cat-eye em acetato preto com estampa xadrez na haste. Assinatura reconhecível de qualquer ângulo."},
-  {id:"rayban-oval",nome:"Oval",marca:"Ray-Ban",shape:"redonda",cor:"#b8935a",mat:"Metal",preco:850,n:6,capa:2,tag:"",
+  {id:"rayban-oval",nome:"Oval",marca:"Ray-Ban",mat:"Metal",preco:850,n:6,capa:2,tag:"",
    desc:"Redonda em metal fino com ponte dupla. O desenho minimalista que atravessa gerações."},
-  {id:"michael-kors-asheville",nome:"Asheville",marca:"Michael Kors",shape:"quadrada",cor:"#141414",mat:"Acetato",preco:690,n:5,capa:2,tag:"",
+  {id:"michael-kors-asheville",nome:"Asheville",marca:"Michael Kors",mat:"Acetato",preco:690,n:5,capa:2,tag:"",
    desc:"Quadrada oversized com hastes em degradê. Volume calculado pra rostos delicados."},
-  {id:"coach-cby91",nome:"CBY91",marca:"Coach",shape:"gatinho",cor:"#141414",mat:"Acetato",preco:780,n:6,capa:2,tag:"",
+  {id:"coach-cby91",nome:"CBY91",marca:"Coach",mat:"Acetato",preco:780,n:6,capa:2,tag:"",
    desc:"Cat-eye contemporâneo com monograma discreto. Equilibra rostos ovais e quadrados."},
-  {id:"marc-jacobs-marc-807s",nome:"MARC 807/S",marca:"Marc Jacobs",shape:"gatinho",cor:"#101010",mat:"Acetato",preco:720,n:5,capa:2,tag:"Novo",
+  {id:"marc-jacobs-marc-807s",nome:"MARC 807/S",marca:"Marc Jacobs",mat:"Acetato",preco:720,n:5,capa:2,tag:"Novo",
    desc:"Cat-eye com o logo Marc Jacobs impresso na haste. Atitude gráfica, sem meio-termo."},
-  {id:"armani-exchange-ax4135s",nome:"AX4135S",marca:"Armani Exchange",shape:"retangular",cor:"#1a1a2e",mat:"Acetato",preco:590,n:4,capa:2,tag:"",
+  {id:"armani-exchange-ax4135s",nome:"AX4135S",marca:"Armani Exchange",mat:"Acetato",preco:590,n:4,capa:2,tag:"",
    desc:"Retangular urbano com hastes em degradê. Traço limpo pra usar todo dia."},
-  {id:"armani-exchange-ax4146su",nome:"AX4146SU",marca:"Armani Exchange",shape:"quadrada",cor:"#141414",mat:"Metal",preco:620,n:5,capa:2,tag:"",
+  {id:"armani-exchange-ax4146su",nome:"AX4146SU",marca:"Armani Exchange",mat:"Metal",preco:620,n:5,capa:2,tag:"",
    desc:"Quadrada em metal fosco com detalhe geométrico na haste. Discreta e precisa."},
-  {id:"vogue-eyewear-vo5601s",nome:"VO5601S",marca:"Vogue Eyewear",shape:"quadrada",cor:"#5a6b52",mat:"Acetato",preco:430,n:6,capa:2,tag:"",
+  {id:"vogue-eyewear-vo5601s",nome:"VO5601S",marca:"Vogue Eyewear",mat:"Acetato",preco:430,n:6,capa:2,tag:"",
    desc:"Quadrada em acetato verde translúcido com armação dourada fina. Um toque de cor sem exagerar."},
-  {id:"vogue-eyewear-vo5520s",nome:"VO5520S",marca:"Vogue Eyewear",shape:"gatinho",cor:"#e8c9c9",mat:"Acetato",preco:440,n:6,capa:2,tag:"Novo",
+  {id:"vogue-eyewear-vo5520s",nome:"VO5520S",marca:"Vogue Eyewear",mat:"Acetato",preco:440,n:6,capa:2,tag:"Novo",
    desc:"Cat-eye em acetato rosa translúcido. Um clássico feminino em tom pastel."},
-  {id:"vogue-eyewear-vo5561s",nome:"VO5561S",marca:"Vogue Eyewear",shape:"quadrada",cor:"#3a2e22",mat:"Acetato",preco:410,n:6,capa:2,tag:"",
+  {id:"vogue-eyewear-vo5561s",nome:"VO5561S",marca:"Vogue Eyewear",mat:"Acetato",preco:410,n:6,capa:2,tag:"",
    desc:"Quadrada em acetato tartaruga com degradê nas lentes. Fácil de usar todo dia."},
-  {id:"vogue-eyewear-vo5409s",nome:"VO5409S",marca:"Vogue Eyewear",shape:"quadrada",cor:"#9aa3b0",mat:"Metal",preco:420,n:6,capa:2,tag:"",
+  {id:"vogue-eyewear-vo5409s",nome:"VO5409S",marca:"Vogue Eyewear",mat:"Metal",preco:420,n:6,capa:2,tag:"",
    desc:"Quadrada em metal prateado com lente espelhada. Leve e discreta no rosto."},
-  {id:"arnette-fastball-20",nome:"Fastball 2.0",marca:"Arnette",shape:"aviador",cor:"#141414",mat:"Nylon esportivo",preco:380,n:6,capa:2,tag:"Novo",
+  {id:"arnette-fastball-20",nome:"Fastball 2.0",marca:"Arnette",mat:"Nylon esportivo",preco:380,n:6,capa:2,tag:"Novo",
    desc:"Wraparound esportivo com lente espelhada. Feito pra sol forte e ritmo acelerado."},
-  {id:"arnette-khim",nome:"Khim",marca:"Arnette",shape:"quadrada",cor:"#141414",mat:"Nylon esportivo",preco:390,n:6,capa:2,tag:"",
+  {id:"arnette-khim",nome:"Khim",marca:"Arnette",mat:"Nylon esportivo",preco:390,n:6,capa:2,tag:"",
    desc:"Quadrada robusta com lente espelhada azul. Presença forte, sem exagero."},
-  {id:"arnette-plot-twist",nome:"Plot Twist",marca:"Arnette",shape:"quadrada",cor:"#1c2430",mat:"Acetato",preco:370,n:6,capa:2,tag:"",
+  {id:"arnette-plot-twist",nome:"Plot Twist",marca:"Arnette",mat:"Acetato",preco:370,n:6,capa:2,tag:"",
    desc:"Contorno arredondado com lente espelhada. Um clássico despretensioso."},
-  {id:"arnette-slickster",nome:"Slickster",marca:"Arnette",shape:"quadrada",cor:"#141414",mat:"Nylon esportivo",preco:380,n:6,capa:2,tag:"",
+  {id:"arnette-slickster",nome:"Slickster",marca:"Arnette",mat:"Nylon esportivo",preco:380,n:6,capa:2,tag:"",
    desc:"Perfil esportivo com lente espelhada azul. Leve o bastante pro treino, bonito o bastante pra rua."},
-  {id:"arnette-snap-ii",nome:"Snap II",marca:"Arnette",shape:"aviador",cor:"#141414",mat:"Nylon esportivo",preco:390,n:6,capa:2,tag:"",
+  {id:"arnette-snap-ii",nome:"Snap II",marca:"Arnette",mat:"Nylon esportivo",preco:390,n:6,capa:2,tag:"",
    desc:"Wraparound de proteção lateral ampliada. Feito pra quem não para."},
-  {id:"kipling-kp4073",nome:"KP4073",marca:"Kipling",shape:"retangular",cor:"#6b4226",mat:"Acetato",preco:280,n:4,capa:2,tag:"Entrada",
+  {id:"kipling-kp4073",nome:"KP4073",marca:"Kipling",mat:"Acetato",preco:280,n:4,capa:2,tag:"Entrada",
    desc:"Retangular em acetato âmbar translúcido. Leve, colorido e descomplicado."},
-  {id:"michael-kors-canberra",nome:"Canberra",marca:"Michael Kors",shape:"quadrada",cor:"#1a1a1a",mat:"Acetato",preco:710,n:5,capa:2,tag:"",
+  {id:"michael-kors-canberra",nome:"Canberra",marca:"Michael Kors",mat:"Acetato",preco:710,n:5,capa:2,tag:"",
    desc:"Quadrada de traço arredondado com acabamento em degradê. Versátil do consultório ao fim de semana."},
 ];
 const fotoUrl = (p,i) => `produtos/${p.id}/${i}.png`;
+/* recorte frontal, sem fundo nem reflexo — é ESTA imagem que o provador
+   põe no rosto, para a pessoa ver a armação que realmente escolheu. */
+const fotoFrente = p => `produtos/${p.id}/frente.png`;
 
 /* Sincroniza o catálogo com a tabela `armacoes` do Supabase, se disponível.
    PRODUTOS continua com os dados locais acima até (e a menos que) o banco
@@ -687,7 +689,7 @@ async function syncCatalogoRemoto(){
     if(error||!data||!data.length)return;
     PRODUTOS.length=0;
     data.forEach(r=>PRODUTOS.push({
-      id:r.id,nome:r.nome,marca:r.marca,shape:r.shape,cor:r.cor,mat:r.mat||"",
+      id:r.id,nome:r.nome,marca:r.marca,mat:r.mat||"",
       preco:+r.preco,tag:r.tag||"",desc:r.descricao||"",n:+r.n_fotos||1,capa:+r.capa||1,
     }));
     renderFilters(); renderGrid();
@@ -695,19 +697,6 @@ async function syncCatalogoRemoto(){
     if(T.prod){ T.prod=PRODUTOS.find(p=>p.id===T.prod.id)||PRODUTOS[0]; drawChips(); if(T.mode==="photo")repaint(); }
   }catch(e){ /* mantém o catálogo local — o site segue funcionando normal */ }
 }
-
-/* ─────────── SILHUETAS (só pro provador virtual) ───────────
-   O provador desenha um contorno vetorial simples sobre a foto do
-   rosto — não é a foto real do produto (essa é mostrada na vitrine).
-   Serve só pra posicionar e escalar algo plausível sobre os olhos. */
-const SHAPES = {
-  retangular:{w:96,h:60,rw:7},
-  quadrada:  {w:100,h:66,rw:8},
-  redonda:   {w:78,h:78,rw:6},
-  gatinho:   {w:96,h:56,rw:7},
-  aviador:   {w:94,h:72,rw:5.5},
-  hexagonal: {w:88,h:70,rw:5.5},
-};
 
 /* ─────────── LENTES ─────────── */
 const LENTES = [
@@ -1180,8 +1169,8 @@ function registrarPedido(total,frete){
    a câmera mostra um guia oval; o rosto precisa se encaixar nele
    para a foto ser tirada sozinha, no ângulo certo. Isso evita o
    problema de fotos mal enquadradas em que o óculos não encaixava.
-   O que é desenhado sobre o rosto é um contorno vetorial simples
-   (frameSVGflat), não a foto do produto — a foto real fica na vitrine. */
+   Sobre o rosto vai a foto real da armação escolhida (frente.png),
+   escalada pela distância entre os olhos e girada com a inclinação da cabeça. */
 const T={on:false,mode:null,img:null,video:null,stream:null,fm:null,auto:true,
          prod:null,t:{cx:.5,cy:.42,scale:.42,rot:0},raf:null,holdStart:0};
 function openTry(id){
@@ -1299,6 +1288,11 @@ async function getFM(){
   fm.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});
   fm.onResults(onMesh); T.fm=fm; return fm;
 }
+/* Proporção real: a frente de uma armação adulta mede ~135 mm de ponta a
+   ponta, contra ~90 mm entre os cantos externos dos olhos. Os recortes em
+   frente.png são cortados rente à armação, então largura = 1.5 × essa
+   distância. O usuário ainda pode afinar pelos controles de tamanho. */
+const FRAME_W = 1.5;
 function onMesh(res){
   if(!T.on)return;
   const lm=res.multiFaceLandmarks&&res.multiFaceLandmarks[0];
@@ -1307,9 +1301,9 @@ function onMesh(res){
     const L=lm[33],R=lm[263];
     const dx=R.x-L.x,dy=R.y-L.y;
     const cx=(L.x+R.x)/2, cy=(L.y+R.y)/2;
-    const scale=Math.hypot(dx,dy)*2.15;
+    const olhos=Math.hypot(dx,dy);
     const rot=Math.atan2(dy,dx);
-    const ok=Math.abs(cx-0.5)<0.09 && Math.abs(cy-0.45)<0.10 && scale>0.30 && scale<0.62 && Math.abs(rot)<0.20;
+    const ok=Math.abs(cx-0.5)<0.09 && Math.abs(cy-0.45)<0.10 && olhos>0.14 && olhos<0.29 && Math.abs(rot)<0.20;
     if(ok){ if(!T.holdStart)T.holdStart=performance.now(); }
     else T.holdStart=0;
     markAlign(ok);
@@ -1320,7 +1314,7 @@ function onMesh(res){
   const L=lm[33],R=lm[263];
   const dx=R.x-L.x,dy=R.y-L.y;
   T.t.cx=(L.x+R.x)/2; T.t.cy=(L.y+R.y)/2;
-  T.t.scale=Math.hypot(dx,dy)*2.15; T.t.rot=Math.atan2(dy,dx);
+  T.t.scale=Math.hypot(dx,dy)*FRAME_W; T.t.rot=Math.atan2(dy,dx);
   syncSliders(); status(false);
   if(T.mode==="photo") repaint();
 }
@@ -1336,52 +1330,18 @@ function status(on,txt){
   if(on){s.innerHTML=`<span class="sp"></span>${txt||"processando"}`;s.classList.add("on");}
   else s.classList.remove("on");
 }
-/* contorno vetorial simples usado só no provador — SVG puro
-   (compatível com iOS/Safari, ao contrário de foreignObject) */
+/* A armação posta no rosto é a FOTO REAL do modelo escolhido
+   (recorte frontal sem fundo nem reflexo, gerado em produtos/<id>/frente.png).
+   Os recortes são centrados na linha das lentes, então basta desenhar a
+   imagem centrada no meio dos olhos. */
 let fCache={k:null,img:null};
-function frameSVGflat(shape,cor){
-  const s=SHAPES[shape]||SHAPES.retangular;
-  const W=s.w,H=s.h,rw=s.rw,BR=26,TOT=W*2+BR,i=rw/2;
-  const lens="rgba(150,185,205,.30)";
-  const st=`fill="${lens}" stroke="${cor}" stroke-width="${rw}" stroke-linejoin="round"`;
-  const shapeAt=x=>{
-    switch(shape){
-      case "redonda":
-        return `<ellipse cx="${x+W/2}" cy="${H/2}" rx="${(W-rw)/2}" ry="${(H-rw)/2}" ${st}/>`;
-      case "hexagonal":{
-        const p=[[.5,0],[1,.26],[1,.74],[.5,1],[0,.74],[0,.26]]
-          .map(([a,b])=>`${(x+i+a*(W-rw)).toFixed(1)},${(i+b*(H-rw)).toFixed(1)}`).join(" ");
-        return `<polygon points="${p}" ${st}/>`;}
-      case "gatinho":{
-        const L=x+i,R=x+W-i,T=i,B=H-i,up=(a,b)=>`${a.toFixed(1)},${b.toFixed(1)}`;
-        return `<path d="M${up(L,T+(B-T)*.42)} Q${up(L+(R-L)*.06,T-(B-T)*.16)} ${up(L+(R-L)*.46,T+(B-T)*.06)}
-          Q${up(R,T+(B-T)*.22)} ${up(R,T+(B-T)*.5)} Q${up(R-(R-L)*.1,B)} ${up(L+(R-L)*.42,B)}
-          Q${up(L,B-(B-T)*.12)} ${up(L,T+(B-T)*.42)} Z" ${st}/>`;}
-      case "aviador":{
-        const L=x+i,R=x+W-i,T=i,B=H-i;
-        return `<path d="M${L},${T+(B-T)*.16} Q${(L+R)/2},${T-(B-T)*.06} ${R},${T+(B-T)*.16}
-          Q${R-(R-L)*.06},${B-(B-T)*.1} ${(L+R)/2+(R-L)*.06},${B}
-          Q${L+(R-L)*.08},${B-(B-T)*.12} ${L},${T+(B-T)*.16} Z" ${st}/>`;}
-      case "quadrada":
-        return `<rect x="${x+i}" y="${i}" width="${W-rw}" height="${H-rw}" rx="7" ${st}/>`;
-      default:
-        return `<rect x="${x+i}" y="${i}" width="${W-rw}" height="${H-rw}" rx="16" ${st}/>`;
-    }
-  };
-  const by=H*0.30+rw/2;
-  const bridge=`<path d="M${W-i} ${by} q${BR/2} ${-rw*0.9} ${BR+rw} 0" stroke="${cor}" stroke-width="${rw}" fill="none" stroke-linecap="round"/>`;
-  const stubs=`<path d="M${i} ${by} L${-rw*0.6} ${by-rw*0.7}" stroke="${cor}" stroke-width="${rw}" stroke-linecap="round"/>
-               <path d="M${TOT-i} ${by} L${TOT+rw*0.6} ${by-rw*0.7}" stroke="${cor}" stroke-width="${rw}" stroke-linecap="round"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${TOT+rw*2}" height="${H+rw}" viewBox="${-rw} ${-rw/2} ${TOT+rw*2} ${H+rw}">
-    ${shapeAt(0)}${bridge}${shapeAt(W+BR)}${stubs}</svg>`;
-}
 function frameImg(cb){
-  const k=T.prod.shape+"|"+T.prod.cor;
+  const k=T.prod.id;
   if(fCache.k===k&&fCache.img)return cb(fCache.img);
   const img=new Image();
   img.onload=()=>{fCache={k,img};cb(img);};
   img.onerror=()=>cb(null);
-  img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(frameSVGflat(T.prod.shape,T.prod.cor));
+  img.src=fotoFrente(T.prod);
 }
 
 function loopDraw(){
@@ -1394,8 +1354,11 @@ function loopDraw(){
 function place(ctx,cv,img){
   const px=T.t.cx*cv.width, py=T.t.cy*cv.height;
   const fw=T.t.scale*cv.width, fh=fw*(img.height/img.width);
+  // a pupila fica um pouco acima do centro da lente: desce a armação
+  // esse tanto pra ela assentar no rosto como assentaria de verdade
+  const drop=fh*0.07;
   ctx.save();ctx.translate(px,py);ctx.rotate(T.t.rot);
-  ctx.drawImage(img,-fw/2,-fh/2,fw,fh);ctx.restore();
+  ctx.drawImage(img,-fw/2,-fh/2+drop,fw,fh);ctx.restore();
 }
 function repaint(){
   const cv=document.getElementById("tryCanvas"); if(!cv||!T.img)return;
@@ -1450,7 +1413,7 @@ function injectFixed(){
       <div class="t-ctrl" id="tryCtrl" style="display:none">
         <div class="t-frames" id="tryFrames"></div>
         <div class="t-tools">
-          <div class="tl">tamanho <input type="range" id="szR" min="0.26" max="0.66" step="0.004"></div>
+          <div class="tl">tamanho <input type="range" id="szR" min="0.18" max="0.62" step="0.004"></div>
           <div class="tl">altura <input type="range" id="psR" min="0.26" max="0.68" step="0.004"></div>
           <button class="tbtn" id="autoB">${IC.rot} Auto-ajuste</button>
           <button class="tbtn" id="newB">${IC.up} Outra foto</button>
