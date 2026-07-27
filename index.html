@@ -528,7 +528,8 @@ footer{background:var(--void);position:relative;z-index:4;border-top:1px solid v
 .cam-msg{
   position:absolute;bottom:70px;left:50%;transform:translateX(-50%);z-index:3;
   font-family:var(--mono);font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--paper);
-  background:rgba(10,10,10,.6);border:1px solid var(--line-dark);padding:8px 15px;border-radius:100px;white-space:nowrap;
+  background:rgba(10,10,10,.72);border:1px solid var(--line-dark);padding:8px 16px;border-radius:16px;
+  width:max-content;max-width:88%;text-align:center;line-height:1.5;
 }
 .cam-shot{
   position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:3;
@@ -538,6 +539,16 @@ footer{background:var(--void);position:relative;z-index:4;border-top:1px solid v
 .cam-shot:hover{transform:translateX(-50%) scale(1.06)}
 .cam-shot svg{width:20px;height:20px}
 .cam-help{margin-top:16px;font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--fog);text-align:center}
+/* pontos de progresso do scan — de frente, um lado, outro lado (tipo Face ID) */
+.scan-steps{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:10px}
+.scan-steps .dot{width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.45);transition:.3s var(--ease);background:transparent}
+.scan-steps .dot.active{border-color:var(--paper);transform:scale(1.35);box-shadow:0 0 0 4px rgba(255,255,255,.18)}
+.scan-steps .dot.done{background:var(--paper);border-color:var(--paper)}
+/* miniaturas circulares pra trocar entre os ângulos capturados do rosto */
+.t-angles{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:4;display:flex;gap:10px}
+.t-angle{width:46px;height:46px;border-radius:50%;overflow:hidden;border:2px solid var(--line-dark);background:var(--void);transition:.25s;flex-shrink:0}
+.t-angle.on{border-color:var(--paper);transform:scale(1.08)}
+.t-angle img{width:100%;height:100%;object-fit:cover}
 
 /* toast */
 .toast{
@@ -672,9 +683,11 @@ const PRODUTOS = [
    desc:"Quadrada de traço arredondado com acabamento em degradê. Versátil do consultório ao fim de semana."},
 ];
 const fotoUrl = (p,i) => `produtos/${p.id}/${i}.png`;
-/* recorte frontal, sem fundo nem reflexo — é ESTA imagem que o provador
-   põe no rosto, para a pessoa ver a armação que realmente escolheu. */
+/* recortes sem fundo nem reflexo — são ESSAS imagens que o provador põe
+   no rosto, pra pessoa ver a armação real no ângulo em que está virada:
+   frente.png de frente, lado.png (espelhado ou não, conforme o lado) de perfil. */
 const fotoFrente = p => `produtos/${p.id}/frente.png`;
+const fotoLado   = p => `produtos/${p.id}/lado.png`;
 
 /* Sincroniza o catálogo com a tabela `armacoes` do Supabase, se disponível.
    PRODUTOS continua com os dados locais acima até (e a menos que) o banco
@@ -1165,20 +1178,28 @@ function registrarPedido(total,frete){
 }
 
 /* ═══════════ PROVADOR VIRTUAL ═══════════
-   Fluxo: enviar foto (detecção automática) OU ligar câmera —
-   a câmera mostra um guia oval; o rosto precisa se encaixar nele
-   para a foto ser tirada sozinha, no ângulo certo. Isso evita o
-   problema de fotos mal enquadradas em que o óculos não encaixava.
-   Sobre o rosto vai a foto real da armação escolhida (frente.png),
-   escalada pela distância entre os olhos e girada com a inclinação da cabeça. */
-const T={on:false,mode:null,img:null,video:null,stream:null,fm:null,auto:true,
-         prod:null,t:{cx:.5,cy:.42,scale:.42,rot:0},raf:null,holdStart:0};
+   Fluxo: enviar foto (um ângulo, com detecção automática) OU escanear o
+   rosto pela câmera — de frente, virando pra um lado, virando pro outro,
+   igual o Face ID: um guia mostra o passo atual e cada pose é capturada
+   sozinha assim que a cabeça se encaixa. Sobre cada foto vai a foto REAL
+   da armação no ângulo correspondente (frente.png de frente, lado.png
+   de perfil), escalada pela distância entre os olhos daquela pose e
+   girada com a inclinação da cabeça — não é mais um contorno flutuando
+   por cima, é o produto de verdade encaixado em cada ângulo do rosto. */
+const T={on:false,mode:null,               // mode: null | 'scan' | 'photo'
+  img:null,video:null,stream:null,fm:null,
+  prod:null,
+  angle:"centro",                          // ângulo em exibição agora
+  scan:{centro:null,ladoA:null,ladoB:null},// cada um: {img,t:{cx,cy,scale,rot},mirror,yawSign}
+  t:{cx:.5,cy:.42,scale:.42,rot:0},auto:true,
+  scanStep:null,holdStart:0,liveT:null,liveYaw:0,raf:null};
 function openTry(id){
   T.prod=id?PRODUTOS.find(p=>p.id===id):PRODUTOS[0];
   document.getElementById("tryOn").classList.add("on");
   document.body.classList.add("locked"); T.on=true;
   drawChips();
-  if(!T.img&&!T.stream) emptyTry(); else loopDraw();
+  if(T.scan.centro){ T.mode="photo"; setStage(); }
+  else emptyTry();
 }
 function closeTry(){
   document.getElementById("tryOn").classList.remove("on");
@@ -1191,26 +1212,31 @@ function emptyTry(){
     <div class="t-empty">
       <div class="bic">${IC.face}</div>
       <h3>Põe a armação no seu rosto</h3>
-      <p>Manda uma selfie de frente com boa luz, ou ligue a câmera: um guia mostra exatamente onde encaixar o rosto e a foto é tirada sozinha, no ângulo certo.</p>
+      <p>Manda uma selfie de frente, ou faça um scan rápido pela câmera: você olha de frente e vira a cabeça pros dois lados, igual o Face ID, e a gente encaixa o óculos real em cada ângulo — não um desenho flutuando por cima.</p>
       <div class="t-up">
         <button class="btn btn-spec" id="upBtn">${IC.up} Enviar foto</button>
-        <button class="btn btn-line" id="camBtn" style="border-color:var(--line-dark);color:var(--paper)">${IC.cam} Usar câmera</button>
+        <button class="btn btn-line" id="camBtn" style="border-color:var(--line-dark);color:var(--paper)">${IC.cam} Escanear rosto</button>
       </div>
       <input type="file" id="tryFile" accept="image/*" hidden>
     </div>`;
   document.getElementById("upBtn").onclick=()=>document.getElementById("tryFile").click();
   document.getElementById("tryFile").onchange=onFile;
-  document.getElementById("camBtn").onclick=startCam;
+  document.getElementById("camBtn").onclick=startScan;
   document.getElementById("tryCtrl").style.display="none";
 }
 function onFile(e){
   const f=e.target.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=ev=>{const i=new Image();i.onload=()=>{stopCam();T.img=i;T.video=null;T.mode="photo";T.auto=true;setStage();detectPhoto();};i.src=ev.target.result;};
+  r.onload=ev=>{const i=new Image();i.onload=()=>{
+    stopCam();
+    T.scan={centro:{img:i,t:{cx:.5,cy:.42,scale:.42,rot:0},mirror:false},ladoA:null,ladoB:null};
+    T.mode="photo"; setAngle("centro"); T.auto=true;
+    setStage(); detectPhoto();
+  };i.src=ev.target.result;};
   r.readAsDataURL(f);
 }
 
-/* ── guia de alinhamento da câmera ── */
+/* ── scan guiado da câmera (3 poses: centro, lado, outro lado) ── */
 function camGuideMarkup(){
   return `
     <div class="cam-wrap">
@@ -1220,45 +1246,78 @@ function camGuideMarkup(){
         <rect width="100" height="100" fill="rgba(10,10,10,.6)" mask="url(#gm)"></rect>
       </svg>
       <div class="cam-ring" id="camRing"></div>
-      <div class="cam-msg" id="camMsg">Centralize o rosto no oval</div>
+      <div class="scan-steps" id="scanSteps">
+        <span class="dot" data-s="centro"></span>
+        <span class="dot" data-s="ladoA"></span>
+        <span class="dot" data-s="ladoB"></span>
+      </div>
+      <div class="cam-msg" id="camMsg">Olhe para a câmera, bem de frente</div>
       <button class="cam-shot" id="camShotBtn" title="Capturar agora">${IC.cam}</button>
     </div>
-    <p class="cam-help">A foto é tirada automaticamente quando o rosto encaixa — ou toque no botão a qualquer momento.</p>`;
+    <p class="cam-help">Cada pose é capturada sozinha quando encaixa — ou toque no botão a qualquer momento.</p>`;
 }
-async function startCam(){
+async function startScan(){
   try{
     const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:960},height:{ideal:960}}});
-    T.stream=s; T.mode="align"; T.holdStart=0;
+    T.stream=s; T.mode="scan"; T.scanStep="centro"; T.holdStart=0; T.liveT=null;
+    T.scan={centro:null,ladoA:null,ladoB:null};
     document.getElementById("tryCtrl").style.display="none";
     document.getElementById("tryStage").innerHTML=camGuideMarkup();
     const v=document.getElementById("camVideo"); v.muted=true; v.playsInline=true; v.srcObject=s;
     await v.play(); T.video=v; T.img=null;
-    document.getElementById("camShotBtn").onclick=()=>capturePhoto();
-    alignLoop();
+    document.getElementById("camShotBtn").onclick=manualCapture;
+    updateStepUI();
+    scanLoop();
   }catch(err){ toast("Não consegui acessar a câmera"); emptyTry(); }
 }
-async function alignLoop(){
+async function scanLoop(){
   const fm=await getFM();
   if(!fm){
-    const m=document.getElementById("camMsg"); if(m)m.textContent="Alinhe visualmente e toque para capturar";
+    const m=document.getElementById("camMsg"); if(m)m.textContent="Toque no botão a cada passo";
     return;
   }
   const step=async()=>{
-    if(!T.on||T.mode!=="align")return;
+    if(!T.on||T.mode!=="scan")return;
     if(T.video&&T.video.readyState>=2){ try{await fm.send({image:T.video});}catch(e){} }
     setTimeout(step,90);
   };
   step();
 }
-function markAlign(ok){
+function updateStepUI(){
+  document.querySelectorAll("#scanSteps .dot").forEach(d=>{
+    const s=d.dataset.s;
+    d.classList.toggle("done", !!T.scan[s]);
+    d.classList.toggle("active", s===T.scanStep);
+  });
+  markScan(false);
+}
+function markScan(ok){
   const ring=document.getElementById("camRing"),msg=document.getElementById("camMsg");
   if(!ring)return;
   ring.classList.toggle("near",ok);
-  const locked = ok && T.holdStart && (performance.now()-T.holdStart>250);
+  const locked = ok && T.holdStart && (performance.now()-T.holdStart>200);
   ring.classList.toggle("locked",locked);
-  if(msg)msg.textContent = locked ? "Perfeito — capturando..." : ok ? "Segure assim..." : "Centralize o rosto no oval";
+  if(!msg)return;
+  if(locked){ msg.textContent="Perfeito — capturando..."; return; }
+  if(ok){ msg.textContent="Segure assim..."; return; }
+  if(T.scanStep==="centro") msg.textContent="Olhe para a câmera, bem de frente";
+  else if(T.scanStep==="ladoA") msg.textContent="Agora vire a cabeça bem devagar para um lado";
+  else msg.textContent="Muito bem. Agora vire para o outro lado";
 }
-function capturePhoto(){
+/* toque manual funciona a qualquer momento, com ou sem detecção de rosto —
+   sem FaceMesh, a segunda e a terceira pose ainda saem com lados diferentes
+   (só não sabemos o ângulo exato, então usamos um padrão razoável). */
+function manualCapture(){
+  if(T.mode!=="scan")return;
+  const t=T.liveT || {cx:.5,cy:.45,scale:.42,rot:0};
+  let sign;
+  if(T.scanStep==="centro") sign=0;
+  else if(T.scanStep==="ladoA") sign = Math.sign(T.liveYaw)||1;
+  else sign = -Math.sign((T.scan.ladoA&&T.scan.ladoA.yawSign)||1);
+  T.holdStart=0;
+  capturePose(t, sign);
+}
+function capturePose(liveT, yawSign){
   const v=T.video; if(!v||!v.videoWidth)return;
   const cv=document.createElement("canvas");
   cv.width=v.videoWidth; cv.height=v.videoHeight;
@@ -1266,19 +1325,48 @@ function capturePhoto(){
   ctx.translate(cv.width,0); ctx.scale(-1,1); ctx.drawImage(v,0,0);
   const img=new Image();
   img.onload=()=>{
-    stopCam();
-    T.img=img; T.video=null; T.mode="photo"; T.auto=true;
-    setStage(); detectPhoto();
+    T.scan[T.scanStep]={img, t:{...liveT}, mirror: yawSign<0, yawSign};
+    advanceScan();
   };
   img.src=cv.toDataURL("image/jpeg",.92);
 }
+function advanceScan(){
+  if(T.scanStep==="centro"){ T.scanStep="ladoA"; updateStepUI(); }
+  else if(T.scanStep==="ladoA"){ T.scanStep="ladoB"; updateStepUI(); }
+  else finishScan();
+}
+function finishScan(){
+  stopCam();
+  T.mode="photo"; T.scanStep=null;
+  setAngle("centro"); T.auto=false;
+  setStage();
+  toast("Rosto capturado — toque nos círculos pra ver de outros ângulos");
+}
 function setStage(){
-  document.getElementById("tryStage").innerHTML=`<canvas id="tryCanvas"></canvas>`;
+  const hasSides = T.scan.ladoA && T.scan.ladoB;
+  document.getElementById("tryStage").innerHTML=
+    `<canvas id="tryCanvas"></canvas>${hasSides?`<div class="t-angles" id="tAngles"></div>`:""}`;
   const cv=document.getElementById("tryCanvas");
   const sw=T.img.width, sh=T.img.height;
   const max=820; cv.width=Math.min(max,sw); cv.height=cv.width*(sh/sw);
   document.getElementById("tryCtrl").style.display="block";
   syncSliders(); makeDrag(cv); loopDraw();
+  if(hasSides) renderAngleThumbs();
+}
+function setAngle(a){
+  if(!T.scan[a])return;
+  T.angle=a; T.t=T.scan[a].t; T.img=T.scan[a].img;
+}
+function switchAngle(a){
+  if(!T.scan[a]||a===T.angle)return;
+  setAngle(a); T.auto=false;
+  syncSliders(); repaint(); renderAngleThumbs();
+}
+function renderAngleThumbs(){
+  const el=document.getElementById("tAngles"); if(!el)return;
+  el.innerHTML=["centro","ladoA","ladoB"].map(a=>
+    `<button class="t-angle ${T.angle===a?"on":""}" data-ta="${a}" title="Ver deste ângulo"><img src="${T.scan[a].img.src}" alt=""></button>`).join("");
+  el.querySelectorAll("[data-ta]").forEach(b=>b.onclick=()=>switchAngle(b.dataset.ta));
 }
 /* FaceMesh */
 async function getFM(){
@@ -1290,24 +1378,43 @@ async function getFM(){
 }
 /* Proporção real: a frente de uma armação adulta mede ~135 mm de ponta a
    ponta, contra ~90 mm entre os cantos externos dos olhos. Os recortes em
-   frente.png são cortados rente à armação, então largura = 1.5 × essa
-   distância. O usuário ainda pode afinar pelos controles de tamanho. */
+   frente.png/lado.png são cortados rente à armação, então largura = 1.5×
+   essa distância. O usuário ainda pode afinar pelos controles de tamanho. */
 const FRAME_W = 1.5;
+/* proxy simples de quanto a cabeça está virada: quando o nariz se afasta
+   do meio dos olhos (em proporção à distância entre eles), a cabeça girou.
+   Não é uma pose 3D de verdade, mas basta pra saber "virou o bastante". */
+function yawOf(lm){
+  const L=lm[33],R=lm[263],N=lm[1];
+  const half=(R.x-L.x)/2;
+  return half ? (N.x-(L.x+R.x)/2)/half : 0;
+}
 function onMesh(res){
   if(!T.on)return;
   const lm=res.multiFaceLandmarks&&res.multiFaceLandmarks[0];
-  if(T.mode==="align"){
-    if(!lm){ T.holdStart=0; markAlign(false); return; }
+  if(T.mode==="scan"){
+    if(!lm){ T.holdStart=0; markScan(false); return; }
     const L=lm[33],R=lm[263];
     const dx=R.x-L.x,dy=R.y-L.y;
     const cx=(L.x+R.x)/2, cy=(L.y+R.y)/2;
     const olhos=Math.hypot(dx,dy);
     const rot=Math.atan2(dy,dx);
-    const ok=Math.abs(cx-0.5)<0.09 && Math.abs(cy-0.45)<0.10 && olhos>0.14 && olhos<0.29 && Math.abs(rot)<0.20;
-    if(ok){ if(!T.holdStart)T.holdStart=performance.now(); }
-    else T.holdStart=0;
-    markAlign(ok);
-    if(ok && T.holdStart && performance.now()-T.holdStart>550){ T.holdStart=0; capturePhoto(); }
+    const yaw=yawOf(lm);
+    T.liveT={cx,cy,scale:olhos*FRAME_W,rot}; T.liveYaw=yaw;
+    const sizeOk=olhos>0.12&&olhos<0.30, vertOk=Math.abs(cy-0.45)<0.12;
+    let ok;
+    if(T.scanStep==="centro"){
+      ok = sizeOk && vertOk && Math.abs(cx-0.5)<0.09 && Math.abs(yaw)<0.22 && Math.abs(rot)<0.20;
+    }else{
+      const precisaSinal = T.scanStep==="ladoB" ? -Math.sign((T.scan.ladoA&&T.scan.ladoA.yawSign)||1) : null;
+      ok = sizeOk && vertOk && Math.abs(yaw)>0.32 && Math.abs(yaw)<0.9
+           && (T.scanStep==="ladoA" || Math.sign(yaw)===precisaSinal);
+    }
+    markScan(ok);
+    if(ok){ if(!T.holdStart)T.holdStart=performance.now(); } else T.holdStart=0;
+    if(ok && T.holdStart && performance.now()-T.holdStart>450){
+      T.holdStart=0; capturePose({...T.liveT}, Math.sign(yaw));
+    }
     return;
   }
   if(!T.auto||!lm)return;
@@ -1330,18 +1437,18 @@ function status(on,txt){
   if(on){s.innerHTML=`<span class="sp"></span>${txt||"processando"}`;s.classList.add("on");}
   else s.classList.remove("on");
 }
-/* A armação posta no rosto é a FOTO REAL do modelo escolhido
-   (recorte frontal sem fundo nem reflexo, gerado em produtos/<id>/frente.png).
-   Os recortes são centrados na linha das lentes, então basta desenhar a
-   imagem centrada no meio dos olhos. */
+/* A armação posta no rosto é a FOTO REAL do modelo escolhido: de frente
+   quando o ângulo em exibição é "centro", de perfil (espelhada ou não,
+   conforme o lado capturado) nos ângulos "ladoA"/"ladoB". */
 let fCache={k:null,img:null};
 function frameImg(cb){
-  const k=T.prod.id;
-  if(fCache.k===k&&fCache.img)return cb(fCache.img);
+  const mirror = T.angle!=="centro" && T.scan[T.angle] && T.scan[T.angle].mirror;
+  const k=T.prod.id+"|"+T.angle;
+  if(fCache.k===k&&fCache.img)return cb(fCache.img,mirror);
   const img=new Image();
-  img.onload=()=>{fCache={k,img};cb(img);};
-  img.onerror=()=>cb(null);
-  img.src=fotoFrente(T.prod);
+  img.onload=()=>{fCache={k,img};cb(img,mirror);};
+  img.onerror=()=>cb(null,mirror);
+  img.src = T.angle==="centro" ? fotoFrente(T.prod) : fotoLado(T.prod);
 }
 
 function loopDraw(){
@@ -1349,22 +1456,27 @@ function loopDraw(){
   const cv=document.getElementById("tryCanvas"); if(!cv||!T.img)return;
   const ctx=cv.getContext("2d");
   ctx.drawImage(T.img,0,0,cv.width,cv.height);
-  frameImg(img=>{ if(img) place(ctx,cv,img); });
+  frameImg((img,mirror)=>{ if(img) place(ctx,cv,img,mirror); });
 }
-function place(ctx,cv,img){
+function place(ctx,cv,img,mirror){
   const px=T.t.cx*cv.width, py=T.t.cy*cv.height;
   const fw=T.t.scale*cv.width, fh=fw*(img.height/img.width);
   // a pupila fica um pouco acima do centro da lente: desce a armação
   // esse tanto pra ela assentar no rosto como assentaria de verdade
   const drop=fh*0.07;
   ctx.save();ctx.translate(px,py);ctx.rotate(T.t.rot);
-  ctx.drawImage(img,-fw/2,-fh/2+drop,fw,fh);ctx.restore();
+  // sombra de contato — sem isso a armação parece colada, não usada
+  ctx.save();ctx.translate(0,fh*0.3);ctx.filter="blur(7px)";ctx.fillStyle="rgba(0,0,0,.22)";
+  ctx.beginPath();ctx.ellipse(0,0,fw*0.4,fh*0.14,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  if(mirror)ctx.scale(-1,1);
+  ctx.drawImage(img,-fw/2,-fh/2+drop,fw,fh);
+  ctx.restore();
 }
 function repaint(){
   const cv=document.getElementById("tryCanvas"); if(!cv||!T.img)return;
   const ctx=cv.getContext("2d");
   ctx.drawImage(T.img,0,0,cv.width,cv.height);
-  frameImg(img=>{ if(img) place(ctx,cv,img); });
+  frameImg((img,mirror)=>{ if(img) place(ctx,cv,img,mirror); });
 }
 function makeDrag(cv){
   let d=false;
@@ -1388,7 +1500,7 @@ function drawChips(){
     </div>`).join("");
   el.querySelectorAll("[data-tf]").forEach(c=>c.onclick=()=>{
     T.prod=PRODUTOS.find(p=>p.id===c.dataset.tf);
-    fCache={k:null,img:null}; drawChips(); if(T.mode==="photo")repaint();
+    drawChips(); if(T.mode==="photo")repaint();
   });
 }
 
@@ -1416,7 +1528,7 @@ function injectFixed(){
           <div class="tl">tamanho <input type="range" id="szR" min="0.18" max="0.62" step="0.004"></div>
           <div class="tl">altura <input type="range" id="psR" min="0.26" max="0.68" step="0.004"></div>
           <button class="tbtn" id="autoB">${IC.rot} Auto-ajuste</button>
-          <button class="tbtn" id="newB">${IC.up} Outra foto</button>
+          <button class="tbtn" id="newB">${IC.rot} Nova leitura</button>
           <button class="tbtn go" id="pickB">${IC.glasses} Escolher grau</button>
         </div>
       </div>
@@ -1429,7 +1541,7 @@ function injectFixed(){
   document.getElementById("szR").oninput=e=>{T.auto=false;T.t.scale=+e.target.value;repaint();};
   document.getElementById("psR").oninput=e=>{T.auto=false;T.t.cy=+e.target.value;repaint();};
   document.getElementById("autoB").onclick=()=>{T.auto=true;if(T.mode==="photo")detectPhoto();toast("Auto-ajuste ligado");};
-  document.getElementById("newB").onclick=()=>{stopCam();T.img=null;T.video=null;T.mode=null;emptyTry();};
+  document.getElementById("newB").onclick=()=>{stopCam();T.scan={centro:null,ladoA:null,ladoB:null};T.img=null;T.video=null;T.mode=null;emptyTry();};
   document.getElementById("pickB").onclick=()=>{const id=T.prod.id;closeTry();openCfg(id);};
 }
 
