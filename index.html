@@ -518,6 +518,7 @@ footer{background:var(--void);position:relative;z-index:4;border-top:1px solid v
 /* ── guia de captura da câmera ── */
 .cam-wrap{position:relative;width:min(78vw,460px);aspect-ratio:1/1;border-radius:24px;overflow:hidden;margin:0 auto;background:#000}
 .cam-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+#camOverlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
 .cam-mask{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .cam-ring{
   position:absolute;left:50%;top:45%;width:52%;height:66%;transform:translate(-50%,-50%);
@@ -1241,6 +1242,7 @@ function camGuideMarkup(){
   return `
     <div class="cam-wrap">
       <video id="camVideo" autoplay playsinline muted></video>
+      <canvas id="camOverlay"></canvas>
       <svg class="cam-mask" viewBox="0 0 100 100" preserveAspectRatio="none">
         <defs><mask id="gm"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="45" rx="26" ry="33" fill="#000"/></mask></defs>
         <rect width="100" height="100" fill="rgba(10,10,10,.6)" mask="url(#gm)"></rect>
@@ -1268,7 +1270,38 @@ async function startScan(){
     document.getElementById("camShotBtn").onclick=manualCapture;
     updateStepUI();
     scanLoop();
+    liveDraw();
   }catch(err){ toast("Não consegui acessar a câmera"); emptyTry(); }
+}
+/* espelho ao vivo: desenha a armação seguindo o rosto em tempo real durante
+   o scan, por cima do próprio vídeo — pra já mostrar o óculos "encaixando"
+   antes mesmo da primeira captura. Se para de fazer sentido (fechou o
+   provador, saiu do modo scan), o loop simplesmente não se reagenda. */
+function liveDraw(){
+  if(!T.on||T.mode!=="scan")return;
+  T.raf=requestAnimationFrame(liveDraw);
+  const cv=document.getElementById("camOverlay"), v=T.video;
+  if(!cv||!v||!v.videoWidth)return;
+  if(cv.width!==v.videoWidth||cv.height!==v.videoHeight){cv.width=v.videoWidth;cv.height=v.videoHeight;}
+  const ctx=cv.getContext("2d");
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(!T.liveT||!T.prod)return;
+  liveFrameImg((img,mirror)=>{ if(img) place(ctx,cv,img,mirror,{t:T.liveT,yaw:T.liveYaw,matchTone:false}); });
+}
+/* qual foto mostrar no espelho ao vivo: de frente quando a cabeça está
+   ~reta, de perfil (espelhada pro lado certo) quando já virou o bastante —
+   mesmo limiar usado pra liberar a captura da pose central. */
+let liveCache={k:null,img:null};
+function liveFrameImg(cb){
+  if(!T.prod)return cb(null,false);
+  const side=Math.abs(T.liveYaw||0)>0.22;
+  const mirror=side&&T.liveYaw<0;
+  const k=T.prod.id+"|"+(side?"lado":"centro");
+  if(liveCache.k===k&&liveCache.img)return cb(liveCache.img,mirror);
+  const img=new Image();
+  img.onload=()=>{liveCache={k,img};cb(img,mirror);};
+  img.onerror=()=>cb(null,mirror);
+  img.src=side?fotoLado(T.prod):fotoFrente(T.prod);
 }
 async function scanLoop(){
   const fm=await getFM();
@@ -1336,7 +1369,7 @@ function advanceScan(){
   else finishScan();
 }
 function finishScan(){
-  stopCam();
+  stopCam(); cancelAnimationFrame(T.raf);
   T.mode="photo"; T.scanStep=null;
   setAngle("centro"); T.auto=false;
   setStage();
@@ -1387,7 +1420,15 @@ const FRAME_W = 1.5;
 function yawOf(lm){
   const L=lm[33],R=lm[263],N=lm[1];
   const half=(R.x-L.x)/2;
-  return half ? (N.x-(L.x+R.x)/2)/half : 0;
+  const eyeYaw = half ? (N.x-(L.x+R.x)/2)/half : 0;
+  // média com o mesmo proxy calculado nas têmporas (pontos de contorno bem
+  // mais largos que os olhos) — mais estável quando a cabeça também inclina
+  // pra cima/baixo, já que uma base mais larga sofre menos com esse ruído
+  const TL=lm[234],TR=lm[454];
+  if(!TL||!TR)return eyeYaw;
+  const halfT=(TR.x-TL.x)/2;
+  const templeYaw = halfT ? (N.x-(TL.x+TR.x)/2)/halfT : eyeYaw;
+  return (eyeYaw+templeYaw)/2;
 }
 function onMesh(res){
   if(!T.on)return;
@@ -1400,7 +1441,17 @@ function onMesh(res){
     const olhos=Math.hypot(dx,dy);
     const rot=Math.atan2(dy,dx);
     const yaw=yawOf(lm);
-    T.liveT={cx,cy,scale:olhos*FRAME_W,rot}; T.liveYaw=yaw;
+    // suaviza com média móvel exponencial — sem isso o overlay ao vivo treme
+    // a cada leitura ruidosa do FaceMesh; 0.25 de peso no valor novo dá um
+    // acompanhamento ainda responsivo mas sem esse tremor
+    if(T.liveT){
+      const p=T.liveT;
+      T.liveT={cx:p.cx*.75+cx*.25, cy:p.cy*.75+cy*.25,
+        scale:p.scale*.75+(olhos*FRAME_W)*.25, rot:p.rot*.75+rot*.25};
+      T.liveYaw=T.liveYaw*.75+yaw*.25;
+    }else{
+      T.liveT={cx,cy,scale:olhos*FRAME_W,rot}; T.liveYaw=yaw;
+    }
     const sizeOk=olhos>0.12&&olhos<0.30, vertOk=Math.abs(cy-0.45)<0.12;
     let ok;
     if(T.scanStep==="centro"){
@@ -1458,18 +1509,48 @@ function loopDraw(){
   ctx.drawImage(T.img,0,0,cv.width,cv.height);
   frameImg((img,mirror)=>{ if(img) place(ctx,cv,img,mirror); });
 }
-function place(ctx,cv,img,mirror){
-  const px=T.t.cx*cv.width, py=T.t.cy*cv.height;
-  const fw=T.t.scale*cv.width, fh=fw*(img.height/img.width);
+/* amostra a luminância média perto das têmporas (onde a armação vai pousar)
+   pra aproximar o tom/brilho do PNG de estúdio da luz real da foto — sem
+   isso a armação sempre parece "colada" com uma iluminação de catálogo. */
+function sampleTone(ctx,cv,px,py,fw){
+  const half=fw*0.55, patch=6;
+  let sr=0,sg=0,sb=0,n=0;
+  for(const x of [px-half,px+half]){
+    const sx=Math.max(0,Math.min(cv.width-patch,x-patch/2));
+    const sy=Math.max(0,Math.min(cv.height-patch,py-patch/2));
+    let d; try{d=ctx.getImageData(sx,sy,patch,patch).data;}catch(e){return null;}
+    for(let i=0;i<d.length;i+=4){sr+=d[i];sg+=d[i+1];sb+=d[i+2];n++;}
+  }
+  if(!n)return null;
+  sr/=n;sg/=n;sb/=n;
+  const lum=(sr*0.299+sg*0.587+sb*0.114)/255;
+  // referência: as fotos de estúdio das armações são bem claras (~0.82)
+  const b=Math.max(0.6,Math.min(1.25,lum/0.82));
+  const sat=Math.max(0.85,Math.min(1.15,0.85+lum*0.3));
+  return {b:b.toFixed(2),s:sat.toFixed(2)};
+}
+function place(ctx,cv,img,mirror,opts){
+  opts=opts||{};
+  const t=opts.t||T.t, yaw=opts.yaw||0, matchTone=opts.matchTone!==false;
+  const px=t.cx*cv.width, py=t.cy*cv.height;
+  const fw=t.scale*cv.width, fh=fw*(img.height/img.width);
   // a pupila fica um pouco acima do centro da lente: desce a armação
   // esse tanto pra ela assentar no rosto como assentaria de verdade
   const drop=fh*0.07;
-  ctx.save();ctx.translate(px,py);ctx.rotate(T.t.rot);
+  const tone = matchTone && ctx.getImageData ? sampleTone(ctx,cv,px,py,fw) : null;
+  ctx.save();ctx.translate(px,py);ctx.rotate(t.rot);
+  // cisalhamento leve proporcional ao quanto a cabeça virou — sugere a
+  // armação "acompanhando" o giro no espelho ao vivo (não é perspectiva 3D
+  // de verdade, só o suficiente pra não parecer um corte seco entre poses)
+  const shear=Math.max(-0.28,Math.min(0.28,yaw*0.6));
+  if(shear)ctx.transform(1,0,shear,1,0,0);
   // sombra de contato — sem isso a armação parece colada, não usada
   ctx.save();ctx.translate(0,fh*0.3);ctx.filter="blur(7px)";ctx.fillStyle="rgba(0,0,0,.22)";
   ctx.beginPath();ctx.ellipse(0,0,fw*0.4,fh*0.14,0,0,Math.PI*2);ctx.fill();ctx.restore();
   if(mirror)ctx.scale(-1,1);
+  if(tone&&"filter"in ctx)ctx.filter=`brightness(${tone.b}) saturate(${tone.s}) blur(.4px)`;
   ctx.drawImage(img,-fw/2,-fh/2+drop,fw,fh);
+  if(tone)ctx.filter="none";
   ctx.restore();
 }
 function repaint(){
